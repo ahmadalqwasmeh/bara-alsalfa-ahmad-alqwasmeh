@@ -115,11 +115,10 @@ function finishVoting(roomCode) {
     }
 
     let max = -1;
-    let topIds = [];
-    // المرشحين للتهمة: كل اللاعبين ما عدا المسؤول
-const candidates = room.players.filter(
-  p => p.id !== room.round.leaderId
-);
+let topIds = [];
+
+// ✅ المرشحين للتهمة: كل اللاعبين ما عدا المسؤول
+const candidates = room.players.filter(p => p.id !== room.round.leaderId);
 
 for (const p of candidates) {
   const c = counts[p.id] || 0;
@@ -130,6 +129,9 @@ for (const p of candidates) {
     topIds.push(p.id);
   }
 }
+
+const accusedId = pickRandom(topIds);
+
 
     const accusedId = pickRandom(topIds);
 
@@ -258,17 +260,24 @@ io.on("connection", (socket) => {
   room.round.votes = {};
   room.round.voteOpen = true;
 
-  // ✅ القائمة بدون المسؤول
-  const voteCandidates = room.players
-    .filter(p => p.id !== room.round.leaderId)
-    .map(p => ({ id: p.id, name: p.name }));
-
-  io.to(roomCode).emit("voting_open", { players: voteCandidates });
-
-  // ✅ اجمالي المصوتين (بدون المسؤول)
+  // ✅ عدد المصوّتين = كل اللاعبين ما عدا المسؤول
   const totalVoters = room.players.filter(p => p.id !== room.round.leaderId).length;
+
+  // ✅ ابعث تقدم التصويت للجميع (حتى المسؤول ممكن يشوف العداد بس بدون شاشة)
   io.to(roomCode).emit("vote_progress", { votedCount: 0, total: totalVoters });
+
+  // ✅ افتح شاشة التصويت فقط لغير المسؤول + قائمة بدون المسؤول + بدون نفس اللاعب
+  room.players.forEach((p) => {
+    if (p.id === room.round.leaderId) return; // المسؤول ما توصله شاشة التصويت
+
+    const candidates = room.players
+      .filter(x => x.id !== room.round.leaderId && x.id !== p.id)
+      .map(x => ({ id: x.id, name: x.name }));
+
+    io.to(p.id).emit("voting_open", { players: candidates });
+  });
 });
+
 
 
     // إرسال صوت
@@ -286,11 +295,11 @@ io.on("connection", (socket) => {
 
   // ✅ ممنوع تصوّت على حالك
   if (targetId === socket.id) {
-    socket.emit("error_msg", "ما بزبط تصوّت لنفسك");
+    socket.emit("error_msg", "ما بتقدر تصوّت على حالك");
     return;
   }
 
-  // ✅ ممنوع تصوّت على المسؤول (حتى لو حاول)
+  // ✅ ممنوع تصوّت على المسؤول
   if (targetId === room.round.leaderId) {
     socket.emit("error_msg", "ما بزبط تصوّت على المسؤول");
     return;
@@ -305,7 +314,6 @@ io.on("connection", (socket) => {
 
   room.round.votes[socket.id] = targetId;
 
-  // ✅ عدد المصوتين المطلوب (بدون المسؤول)
   const totalVoters = room.players.filter(p => p.id !== room.round.leaderId).length;
 
   io.to(roomCode).emit("vote_progress", {
@@ -313,11 +321,12 @@ io.on("connection", (socket) => {
     total: totalVoters
   });
 
-  // ✅ انهي التصويت فقط لما كل غير المسؤول يصوّتوا
+  // ✅ خلّص لما كل غير المسؤول صوّتوا
   if (Object.keys(room.round.votes).length === totalVoters) {
     finishVoting(roomCode);
   }
 });
+
 
 
     socket.on("close_voting", ({ roomCode }) => {
@@ -430,5 +439,6 @@ io.on("connection", (socket) => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, "0.0.0.0", () => console.log("Server running on port", PORT));
+
 
 
