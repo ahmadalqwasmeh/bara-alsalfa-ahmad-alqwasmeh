@@ -330,26 +330,30 @@
             voteProgress.textContent = "جاهزين للنقاش… ولما بدكم اضغطوا (تصويت)";
         });
 
-        socket.on("voting_open", ({ players }) => {
-            selectedVoteId = null;
-            submitVoteBtn.disabled = false;
-            voteErr.textContent = "";
+       socket.on("voting_open", ({ players }) => {
+  selectedVoteId = null;
+  submitVoteBtn.disabled = false;
+  voteErr.textContent = "";
 
-            voteList.innerHTML = players.map(p => `
-            <label style="display:block; padding:8px; border-bottom:1px solid #eee; cursor:pointer;">
-              <input type="radio" name="vote" value="${p.id}" style="margin-left:8px;">
-              ${p.name}
-            </label>
-          `).join("");
+  // ✅ اخفِ اسمك انت من القائمة (حتى ما تكبس بالغلط)
+  const filtered = players.filter(p => p.id !== socket.id);
 
-            voteList.querySelectorAll('input[name="vote"]').forEach(inp => {
-                inp.addEventListener("change", (e) => {
-                    selectedVoteId = e.target.value;
-                });
-            });
+  voteList.innerHTML = filtered.map(p => `
+    <label style="display:block; padding:8px; border-bottom:1px solid #eee; cursor:pointer;">
+      <input type="radio" name="vote" value="${p.id}" style="margin-left:8px;">
+      ${p.name}
+    </label>
+  `).join("");
 
-            show("voting");
-        });
+  voteList.querySelectorAll('input[name="vote"]').forEach(inp => {
+    inp.addEventListener("change", (e) => {
+      selectedVoteId = e.target.value;
+    });
+  });
+
+  show("voting");
+});
+
 
         socket.on("vote_progress", ({ votedCount, total }) => {
             voteProgress.textContent = `التصويت: ${votedCount} / ${total}`;
@@ -395,3 +399,4 @@
     </script>
 </body>
 </html>
+
