@@ -181,6 +181,10 @@
         const submitVoteBtn = document.getElementById("submitVoteBtn");
         const backBtn = document.getElementById("backBtn");
         const voteErr = document.getElementById("voteErr");
+        backBtn.onclick = () => {
+  show("lobby");  // يرجع للّوبي فقط
+};
+
 
         const roundSummary = document.getElementById("roundSummary");
         const scoreTable = document.getElementById("scoreTable");
@@ -401,5 +405,6 @@
     </script>
 </body>
 </html>
+
 
 
