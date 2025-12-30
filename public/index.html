@@ -1,0 +1,397 @@
+﻿<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>برا السالفة</title>
+    <style>
+        body {
+            font-family: system-ui;
+            margin: 20px;
+        }
+
+        .card {
+            border: 1px solid #ddd;
+            border-radius: 12px;
+            padding: 16px;
+            max-width: 560px;
+        }
+
+        input, button {
+            padding: 10px;
+            font-size: 16px;
+            width: 100%;
+            margin: 6px 0;
+        }
+
+        ul {
+            padding-right: 18px;
+        }
+
+        .ok {
+            color: green
+        }
+
+        .bad {
+            color: crimson
+        }
+
+        .hint {
+            color: #555
+        }
+
+        .row {
+            display: flex;
+            gap: 8px;
+        }
+
+            .row button {
+                width: 50%;
+            }
+
+        .box {
+            border: 1px solid #eee;
+            border-radius: 12px;
+            padding: 12px;
+            margin-top: 10px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 8px;
+        }
+
+        td, th {
+            border-bottom: 1px solid #eee;
+            padding: 8px;
+            text-align: right;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h2>برا السالفة</h2>
+
+        <div id="join">
+            <input id="name" placeholder="اسمك" />
+            <input id="room" placeholder="كود الغرفة (مثلاً ABCD)" />
+            <button id="joinBtn">دخول</button>
+            <p id="joinErr" class="bad"></p>
+        </div>
+
+        <div id="lobby" style="display:none;">
+            <h3>الغرفة: <span id="roomLbl"></span></h3>
+
+            <div class="box">
+                <b>النقاط الحالية</b>
+                <ul id="scores"></ul>
+            </div>
+
+            <p><b>اللاعبين:</b></p>
+            <ul id="players"></ul>
+
+            <div class="row">
+                <!-- ✅ صار جاهزية مش بدء مباشر -->
+                <button id="startBtn">جاهز لبدء الجولة</button>
+                <button id="voteBtn" disabled>تصويت</button>
+            </div>
+
+            <p id="startProg" class="hint"></p>
+
+            <div id="leaderBox" class="box" style="display:none;">
+                <p class="hint">✅ أنت المسؤول! اكتب الكلمة/الموضوع ثم اضغط إرسال:</p>
+                <input id="topic" placeholder="مثال: فواكه / سيارات / أفلام..." />
+                <button id="sendTopicBtn">إرسال الموضوع</button>
+            </div>
+
+            <div id="outsiderGuessBox" class="box" style="display:none;">
+                <p class="hint">🕵️‍♂️ أنت برا السالفة! خمن الموضوع:</p>
+                <input id="guess" placeholder="اكتب تخمينك..." />
+                <button id="sendGuessBtn">إرسال التخمين</button>
+            </div>
+
+            <p id="msg"></p>
+            <p id="role"></p>
+            <p id="voteProgress" class="hint"></p>
+        </div>
+
+        <div id="voting" style="display:none;">
+            <h3>تصويت: مين برا السالفة؟</h3>
+            <div id="voteList" class="box"></div>
+            <button id="submitVoteBtn">تأكيد التصويت</button>
+            <button id="backBtn" style="margin-top:0;">رجوع</button>
+            <p id="voteErr" class="bad"></p>
+        </div>
+
+        <div id="results" style="display:none;">
+            <h3>نتائج الجولة</h3>
+            <p id="roundSummary"></p>
+
+            <div class="box">
+                <b>لوحة النقاط</b>
+                <table>
+                    <thead><tr><th>اللاعب</th><th>النقاط</th></tr></thead>
+                    <tbody id="scoreTable"></tbody>
+                </table>
+            </div>
+
+            <button id="newRoundBtn">جاهز لجولة جديدة</button>
+            <p id="nextProg" class="hint"></p>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+
+        const joinDiv = document.getElementById("join");
+        const lobbyDiv = document.getElementById("lobby");
+        const votingDiv = document.getElementById("voting");
+        const resultsDiv = document.getElementById("results");
+
+        const nameInp = document.getElementById("name");
+        const roomInp = document.getElementById("room");
+        const joinBtn = document.getElementById("joinBtn");
+        const joinErr = document.getElementById("joinErr");
+
+        const roomLbl = document.getElementById("roomLbl");
+        const playersUl = document.getElementById("players");
+        const scoresUl = document.getElementById("scores");
+
+        const startBtn = document.getElementById("startBtn");
+        const startProg = document.getElementById("startProg");
+        const voteBtn = document.getElementById("voteBtn");
+
+        const leaderBox = document.getElementById("leaderBox");
+        const topicInp = document.getElementById("topic");
+        const sendTopicBtn = document.getElementById("sendTopicBtn");
+
+        const outsiderGuessBox = document.getElementById("outsiderGuessBox");
+        const guessInp = document.getElementById("guess");
+        const sendGuessBtn = document.getElementById("sendGuessBtn");
+
+        const msg = document.getElementById("msg");
+        const role = document.getElementById("role");
+        const voteProgress = document.getElementById("voteProgress");
+
+        const voteList = document.getElementById("voteList");
+        const submitVoteBtn = document.getElementById("submitVoteBtn");
+        const backBtn = document.getElementById("backBtn");
+        const voteErr = document.getElementById("voteErr");
+
+        const roundSummary = document.getElementById("roundSummary");
+        const scoreTable = document.getElementById("scoreTable");
+        const newRoundBtn = document.getElementById("newRoundBtn");
+        const nextProg = document.getElementById("nextProg");
+
+        let currentRoom = "";
+        let selectedVoteId = null;
+
+        function must(v) { return (v || "").trim(); }
+
+        function show(screen) {
+            joinDiv.style.display = (screen === "join") ? "block" : "none";
+            lobbyDiv.style.display = (screen === "lobby") ? "block" : "none";
+            votingDiv.style.display = (screen === "voting") ? "block" : "none";
+            resultsDiv.style.display = (screen === "results") ? "block" : "none";
+        }
+
+        function resetRoundUI() {
+            msg.textContent = "";
+            msg.className = "";
+            role.textContent = "";
+            role.className = "";
+            voteProgress.textContent = "";
+            leaderBox.style.display = "none";
+            outsiderGuessBox.style.display = "none";
+            topicInp.value = "";
+            guessInp.value = "";
+            sendTopicBtn.disabled = false;
+            voteBtn.disabled = true;
+        }
+
+        // دخول
+        joinBtn.onclick = () => {
+            joinErr.textContent = "";
+            const name = must(nameInp.value);
+            const roomCode = must(roomInp.value).toUpperCase();
+            if (!name || !roomCode) {
+                joinErr.textContent = "اكتب الاسم وكود الغرفة";
+                return;
+            }
+            currentRoom = roomCode;
+            roomLbl.textContent = roomCode;
+            show("lobby");
+            resetRoundUI();
+            startBtn.disabled = false;
+            startProg.textContent = "";
+            socket.emit("join_room", { roomCode, name });
+        };
+
+        // ✅ جاهز لبدء الجولة
+        startBtn.onclick = () => {
+            startBtn.disabled = true;
+            startProg.textContent = "✅ تم تسجيل جاهزيتك… استنى الباقي.";
+            resetRoundUI();
+            socket.emit("ready_start_round", { roomCode: currentRoom });
+        };
+
+        // فتح التصويت
+        voteBtn.onclick = () => {
+            socket.emit("open_voting", { roomCode: currentRoom });
+        };
+
+        // إرسال موضوع
+        sendTopicBtn.onclick = () => {
+            socket.emit("submit_topic", { roomCode: currentRoom, topic: topicInp.value });
+        };
+
+        // إرسال تخمين
+        sendGuessBtn.onclick = () => {
+            socket.emit("submit_outsider_guess", { roomCode: currentRoom, guess: guessInp.value });
+        };
+
+        // التصويت
+        submitVoteBtn.onclick = () => {
+            voteErr.textContent = "";
+            if (!selectedVoteId) {
+                voteErr.textContent = "اختار اسم قبل التأكيد";
+                return;
+            }
+            socket.emit("submit_vote", { roomCode: currentRoom, targetId: selectedVoteId });
+            submitVoteBtn.disabled = true;
+            voteErr.textContent = "✅ تم إرسال صوتك، استنى الباقي...";
+        };
+
+        backBtn.onclick = () => show("lobby");
+
+        // ✅ جاهز لجولة جديدة
+        newRoundBtn.onclick = () => {
+            newRoundBtn.disabled = true;
+            nextProg.textContent = "✅ تم تسجيل جاهزيتك… استنى الباقي.";
+            socket.emit("ready_next_round", { roomCode: currentRoom });
+        };
+
+        // تحديث اللاعبين والنقاط
+        socket.on("room_update", ({ players }) => {
+            playersUl.innerHTML = players.map(p => `<li>${p.name}</li>`).join("");
+            scoresUl.innerHTML = players
+                .slice()
+                .sort((a, b) => b.score - a.score)
+                .map(p => `<li>${p.name}: <b>${p.score}</b></li>`)
+                .join("");
+        });
+
+        // ✅ تحديث تقدم جاهزين لبدء الجولة
+        socket.on("start_round_progress", ({ readyCount, total }) => {
+            startProg.textContent = `الجاهزين لبدء الجولة: ${readyCount} / ${total}`;
+            if (readyCount === 0) {
+                startBtn.disabled = false;
+            }
+        });
+
+        socket.on("round_started", ({ leaderName }) => {
+            show("lobby");
+            resetRoundUI();
+
+            // رجّع زر جاهز لبدء الجولة للي ما كبس (نخليه مفعّل للجولة الجاي)
+            startBtn.disabled = false;
+            startProg.textContent = "";
+
+            // زر الجولة الجديدة (لو كنا بالنتائج) رجعه
+            newRoundBtn.disabled = false;
+            nextProg.textContent = "";
+
+            msg.innerHTML = `🎲 تم اختيار <b>${leaderName}</b> كمُسؤول لهذه الجولة.`;
+        });
+
+        socket.on("leader_prompt_topic", () => {
+            leaderBox.style.display = "block";
+        });
+
+        socket.on("leader_topic_locked", () => {
+            sendTopicBtn.disabled = true;
+            leaderBox.style.display = "none";
+        });
+
+        socket.on("topic_revealed", ({ topic }) => {
+            role.textContent = `🧩 الموضوع: ${topic}`;
+            role.className = "ok";
+        });
+
+        socket.on("topic_hidden", () => {
+            role.textContent = "🕵️‍♂️ انت برا السالفة… الموضوع مخفي عنك!";
+            role.className = "bad";
+        });
+
+        socket.on("discussion_ready", () => {
+            voteBtn.disabled = false;
+            voteProgress.textContent = "جاهزين للنقاش… ولما بدكم اضغطوا (تصويت)";
+        });
+
+        socket.on("voting_open", ({ players }) => {
+            selectedVoteId = null;
+            submitVoteBtn.disabled = false;
+            voteErr.textContent = "";
+
+            voteList.innerHTML = players.map(p => `
+            <label style="display:block; padding:8px; border-bottom:1px solid #eee; cursor:pointer;">
+              <input type="radio" name="vote" value="${p.id}" style="margin-left:8px;">
+              ${p.name}
+            </label>
+          `).join("");
+
+            voteList.querySelectorAll('input[name="vote"]').forEach(inp => {
+                inp.addEventListener("change", (e) => {
+                    selectedVoteId = e.target.value;
+                });
+            });
+
+            show("voting");
+        });
+
+        socket.on("vote_progress", ({ votedCount, total }) => {
+            voteProgress.textContent = `التصويت: ${votedCount} / ${total}`;
+        });
+
+        socket.on("voting_result", ({ accusedName, outsiderCaught, outsiderName }) => {
+            show("lobby");
+            msg.innerHTML = outsiderCaught
+                ? `✅ تم اتهام <b>${accusedName}</b>… وطلع هو فعلًا <b>برا السالفة</b>!`
+                : `❌ تم اتهام <b>${accusedName}</b>… لكنه <b>مش</b> برا السالفة. برا السالفة الحقيقي هو <b>${outsiderName}</b>.`;
+            msg.className = outsiderCaught ? "ok" : "bad";
+            voteBtn.disabled = true;
+            voteProgress.textContent = "";
+        });
+
+        socket.on("outsider_guess_prompt", () => {
+            outsiderGuessBox.style.display = "block";
+        });
+
+        socket.on("round_results", ({ correct, topic, scoreboard }) => {
+            show("results");
+            newRoundBtn.disabled = false;
+            nextProg.textContent = "";
+
+            roundSummary.innerHTML = correct
+                ? `🎉 برا السالفة خمن صح! <b>الموضوع كان:</b> ${topic}`
+                : `📌 برا السالفة خمن غلط. <b>الموضوع كان:</b> ${topic}`;
+
+            scoreTable.innerHTML = scoreboard
+                .map(r => `<tr><td>${r.name}</td><td><b>${r.score}</b></td></tr>`)
+                .join("");
+        });
+
+        socket.on("next_round_progress", ({ readyCount, total }) => {
+            nextProg.textContent = `الجاهزين للجولة الجديدة: ${readyCount} / ${total}`;
+        });
+
+        socket.on("error_msg", (t) => {
+            msg.textContent = t;
+            msg.className = "bad";
+            voteErr.textContent = t;
+        });
+    </script>
+</body>
+</html>
