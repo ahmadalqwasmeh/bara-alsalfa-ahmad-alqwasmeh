@@ -116,15 +116,21 @@ function finishVoting(roomCode) {
 
     let max = -1;
     let topIds = [];
-    for (const p of room.players) {
-        const c = counts[p.id] || 0;
-        if (c > max) {
-            max = c;
-            topIds = [p.id];
-        } else if (c === max) {
-            topIds.push(p.id);
-        }
-    }
+    // المرشحين للتهمة: كل اللاعبين ما عدا المسؤول
+const candidates = room.players.filter(
+  p => p.id !== room.round.leaderId
+);
+
+for (const p of candidates) {
+  const c = counts[p.id] || 0;
+  if (c > max) {
+    max = c;
+    topIds = [p.id];
+  } else if (c === max) {
+    topIds.push(p.id);
+  }
+}
+
     const accusedId = pickRandom(topIds);
 
     const outsiderId = room.round.outsiderId;
@@ -240,50 +246,79 @@ io.on("connection", (socket) => {
 
     // فتح التصويت
     socket.on("open_voting", ({ roomCode }) => {
-        const room = rooms[roomCode];
-        if (!room) return;
+  const room = rooms[roomCode];
+  if (!room) return;
 
-        if (room.round.phase !== "discussion") {
-            socket.emit("error_msg", "مش وقت التصويت الآن");
-            return;
-        }
+  if (room.round.phase !== "discussion") {
+    socket.emit("error_msg", "مش وقت التصويت الآن");
+    return;
+  }
 
-        room.round.phase = "voting";
-        room.round.votes = {};
-        room.round.voteOpen = true;
+  room.round.phase = "voting";
+  room.round.votes = {};
+  room.round.voteOpen = true;
 
-        io.to(roomCode).emit("voting_open", { players: safePlayersList(room) });
-    });
+  // ✅ القائمة بدون المسؤول
+  const voteCandidates = room.players
+    .filter(p => p.id !== room.round.leaderId)
+    .map(p => ({ id: p.id, name: p.name }));
+
+  io.to(roomCode).emit("voting_open", { players: voteCandidates });
+
+  // ✅ اجمالي المصوتين (بدون المسؤول)
+  const totalVoters = room.players.filter(p => p.id !== room.round.leaderId).length;
+  io.to(roomCode).emit("vote_progress", { votedCount: 0, total: totalVoters });
+});
+
 
     // إرسال صوت
-    socket.on("submit_vote", ({ roomCode, targetId }) => {
-        const room = rooms[roomCode];
-        if (!room) return;
+   socket.on("submit_vote", ({ roomCode, targetId }) => {
+  const room = rooms[roomCode];
+  if (!room) return;
 
-        if (room.round.phase !== "voting" || !room.round.voteOpen) return;
+  if (room.round.phase !== "voting" || !room.round.voteOpen) return;
 
-        if (targetId === socket.id) {
-            socket.emit("error_msg", "ما بزبط تصوّت لنفسك");
-            return;
-        }
+  // ✅ المسؤول ممنوع يصوّت
+  if (socket.id === room.round.leaderId) {
+    socket.emit("error_msg", "المسؤول ما بصوّت");
+    return;
+  }
 
-        const target = room.players.find(p => p.id === targetId);
-        if (!target) {
-            socket.emit("error_msg", "اختيار غير صالح");
-            return;
-        }
+  // ✅ ممنوع تصوّت على حالك
+  if (targetId === socket.id) {
+    socket.emit("error_msg", "ما بزبط تصوّت لنفسك");
+    return;
+  }
 
-        room.round.votes[socket.id] = targetId;
+  // ✅ ممنوع تصوّت على المسؤول (حتى لو حاول)
+  if (targetId === room.round.leaderId) {
+    socket.emit("error_msg", "ما بزبط تصوّت على المسؤول");
+    return;
+  }
 
-        io.to(roomCode).emit("vote_progress", {
-            votedCount: Object.keys(room.round.votes).length,
-            total: room.players.length
-        });
+  // تأكد الهدف موجود
+  const target = room.players.find(p => p.id === targetId);
+  if (!target) {
+    socket.emit("error_msg", "اختيار غير صالح");
+    return;
+  }
 
-        if (Object.keys(room.round.votes).length === room.players.length) {
-            finishVoting(roomCode);
-        }
-    });
+  room.round.votes[socket.id] = targetId;
+
+  // ✅ عدد المصوتين المطلوب (بدون المسؤول)
+  const totalVoters = room.players.filter(p => p.id !== room.round.leaderId).length;
+
+  io.to(roomCode).emit("vote_progress", {
+    votedCount: Object.keys(room.round.votes).length,
+    total: totalVoters
+  });
+
+  // ✅ انهي التصويت فقط لما كل غير المسؤول يصوّتوا
+  if (Object.keys(room.round.votes).length === totalVoters) {
+    finishVoting(roomCode);
+  }
+});
+
 
     socket.on("close_voting", ({ roomCode }) => {
         const room = rooms[roomCode];
@@ -395,4 +430,5 @@ io.on("connection", (socket) => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, "0.0.0.0", () => console.log("Server running on port", PORT));
+
 
