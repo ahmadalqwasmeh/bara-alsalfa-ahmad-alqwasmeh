@@ -133,7 +133,6 @@ for (const p of candidates) {
 const accusedId = pickRandom(topIds);
 
 
-    const accusedId = pickRandom(topIds);
 
     const outsiderId = room.round.outsiderId;
     const outsiderCaught = (accusedId === outsiderId);
@@ -439,6 +438,7 @@ io.on("connection", (socket) => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, "0.0.0.0", () => console.log("Server running on port", PORT));
+
 
 
 
