@@ -42,6 +42,10 @@
     <!-- شاشة اللوبي/اللعب -->
     <div id="lobby" style="display:none;">
       <h3>الغرفة: <span id="roomLbl"></span></h3>
+      <p id="connStatus" class="hint" style="margin-top:6px;">
+  ✅ متصل
+</p>
+
 
       <div class="box">
         <b>النقاط الحالية</b>
@@ -128,6 +132,56 @@
     const joinErr = document.getElementById("joinErr");
 
     const roomLbl = document.getElementById("roomLbl");
+    const connStatus = document.getElementById("connStatus");
+    let connTimer = null;
+
+function setConn(text, cls) {
+  if (!connStatus) return;
+  connStatus.textContent = text;
+  connStatus.className = cls || "hint";
+}
+
+// ✅ أول ما نتصل
+socket.on("connect", () => {
+  setConn("✅ متصل", "ok");
+
+  // إذا كنت راجع من انقطاع، نظّف أي مؤقت
+  if (connTimer) {
+    clearTimeout(connTimer);
+    connTimer = null;
+  }
+});
+
+// 🟡 لما يفصل الاتصال (سكون/تطبيق ثاني/نت)
+socket.on("disconnect", (reason) => {
+  setConn("🟡 انقطع الاتصال… بحاول أعيد الاتصال", "hint");
+
+  // إذا طول أكثر من 20 ثانية، نغيّرها لتحذير أوضح
+  if (connTimer) clearTimeout(connTimer);
+  connTimer = setTimeout(() => {
+    setConn("🔴 الاتصال مش ثابت… تأكد من النت أو ارجع افتح الصفحة", "bad");
+  }, 20000);
+});
+
+// 🟡 أثناء محاولات إعادة الاتصال
+socket.io.on("reconnect_attempt", (attempt) => {
+  setConn(`🟡 بحاول أعيد الاتصال… محاولة ${attempt}`, "hint");
+});
+
+// ✅ لما يرجع الاتصال بعد انقطاع
+socket.io.on("reconnect", () => {
+  setConn("✅ رجع الاتصال", "ok");
+  if (connTimer) {
+    clearTimeout(connTimer);
+    connTimer = null;
+  }
+});
+
+// 🔴 لو فشل يعيد الاتصال
+socket.io.on("reconnect_failed", () => {
+  setConn("🔴 فشل إعادة الاتصال… جرّب حدّث الصفحة", "bad");
+});
+
     const playersUl = document.getElementById("players");
     const scoresUl = document.getElementById("scores");
 
@@ -434,3 +488,4 @@
   </script>
 </body>
 </html>
+
